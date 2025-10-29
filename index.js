@@ -24,7 +24,7 @@ const app = express();
 // Correct CORS setup
 app.use(
   cors({
-    origin: "https://tiara-steps.vercel.app/", // frontend URL
+    origin: "https://tiara-steps.vercel.app", // frontend URL
     credentials: true, // allow cookies / auth headers
   })
 );
