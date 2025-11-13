@@ -51,6 +51,66 @@ const userSchema = new mongoose.Schema(
         default: 0,
       },
     },
+    wishlist: [
+      {
+        productId: {
+          type: mongoose.Types.ObjectId,
+          ref: "Product",
+          required: true,
+        },
+      },
+    ],
+    addresses: [
+      {
+        fullName: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        phone: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        pincode: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        state: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        city: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        addressLine1: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        addressLine2: {
+          type: String,
+          trim: true,
+        },
+        landmark: {
+          type: String,
+          trim: true,
+        },
+        addressType: {
+          type: String,
+          enum: ["home", "work", "other"],
+          default: "home",
+        },
+        isDefault: {
+          type: Boolean,
+          default: false,
+        },
+      },
+    ],
   },
   { timestamps: true }
 );

@@ -8,6 +8,7 @@ import {
   updateOrderStatus,
   getAllProducts,
   productStatus,
+  deleteProduct,
   getAdminDetails,
 } from "../controllers/admin.js";
 
@@ -18,7 +19,7 @@ router.route("/order").get(getAllOrders).put(updateOrderStatus);
 router.route("/coupons").get(getCoupons).post(createCoupon);
 router.route("/coupons/:id").delete(deleteCoupon);
 router.route("/products").get(getAllProducts);
-router.route("/product/:id").put(productStatus);
+router.route("/product/:id").put(productStatus).delete(deleteProduct);
 router.route("/info").get(getAdminDetails);
 
 export default router;

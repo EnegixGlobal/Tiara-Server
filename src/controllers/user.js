@@ -224,3 +224,171 @@ export const changeResetPassword = asyncErrorHandler(async (req, res, next) => {
     message: "Password changed successfully",
   });
 });
+
+// Add Address
+export const addAddress = asyncErrorHandler(async (req, res, next) => {
+  const id = req.tokenId;
+  const {
+    fullName,
+    phone,
+    pincode,
+    state,
+    city,
+    addressLine1,
+    addressLine2,
+    landmark,
+    addressType,
+    isDefault,
+  } = req.body;
+
+  if (!fullName || !phone || !pincode || !state || !city || !addressLine1) {
+    return next(new errorHandler("Please fill all required fields", 400));
+  }
+
+  const userObj = await user.findById(id);
+  if (!userObj) {
+    return next(new errorHandler("User not found", 404));
+  }
+
+  // If this is set as default, unset all other defaults
+  if (isDefault) {
+    userObj.addresses.forEach((addr) => {
+      addr.isDefault = false;
+    });
+  }
+
+  // If this is the first address, make it default
+  if (userObj.addresses.length === 0) {
+    userObj.addresses.push({
+      fullName,
+      phone,
+      pincode,
+      state,
+      city,
+      addressLine1,
+      addressLine2: addressLine2 || "",
+      landmark: landmark || "",
+      addressType: addressType || "home",
+      isDefault: true,
+    });
+  } else {
+    userObj.addresses.push({
+      fullName,
+      phone,
+      pincode,
+      state,
+      city,
+      addressLine1,
+      addressLine2: addressLine2 || "",
+      landmark: landmark || "",
+      addressType: addressType || "home",
+      isDefault: isDefault || false,
+    });
+  }
+
+  await userObj.save();
+
+  res.status(200).json({
+    success: true,
+    message: "Address added successfully",
+    addresses: userObj.addresses,
+  });
+});
+
+// Get Addresses
+export const getAddresses = asyncErrorHandler(async (req, res, next) => {
+  const id = req.tokenId;
+
+  const userObj = await user.findById(id).select("addresses");
+  if (!userObj) {
+    return next(new errorHandler("User not found", 404));
+  }
+
+  res.status(200).json({
+    success: true,
+    addresses: userObj.addresses || [],
+  });
+});
+
+// Update Address
+export const updateAddress = asyncErrorHandler(async (req, res, next) => {
+  const id = req.tokenId;
+  const { addressId } = req.params;
+  const {
+    fullName,
+    phone,
+    pincode,
+    state,
+    city,
+    addressLine1,
+    addressLine2,
+    landmark,
+    addressType,
+    isDefault,
+  } = req.body;
+
+  if (!fullName || !phone || !pincode || !state || !city || !addressLine1) {
+    return next(new errorHandler("Please fill all required fields", 400));
+  }
+
+  const userObj = await user.findById(id);
+  if (!userObj) {
+    return next(new errorHandler("User not found", 404));
+  }
+
+  const address = userObj.addresses.id(addressId);
+  if (!address) {
+    return next(new errorHandler("Address not found", 404));
+  }
+
+  // If this is set as default, unset all other defaults
+  if (isDefault) {
+    userObj.addresses.forEach((addr) => {
+      if (addr._id.toString() !== addressId) {
+        addr.isDefault = false;
+      }
+    });
+  }
+
+  address.fullName = fullName;
+  address.phone = phone;
+  address.pincode = pincode;
+  address.state = state;
+  address.city = city;
+  address.addressLine1 = addressLine1;
+  address.addressLine2 = addressLine2 || "";
+  address.landmark = landmark || "";
+  address.addressType = addressType || "home";
+  address.isDefault = isDefault !== undefined ? isDefault : address.isDefault;
+
+  await userObj.save();
+
+  res.status(200).json({
+    success: true,
+    message: "Address updated successfully",
+    addresses: userObj.addresses,
+  });
+});
+
+// Delete Address
+export const deleteAddress = asyncErrorHandler(async (req, res, next) => {
+  const id = req.tokenId;
+  const { addressId } = req.params;
+
+  const userObj = await user.findById(id);
+  if (!userObj) {
+    return next(new errorHandler("User not found", 404));
+  }
+
+  userObj.addresses = userObj.addresses.filter(
+    (addr) => addr._id.toString() !== addressId
+  );
+
+  await userObj.save();
+
+  res.status(200).json({
+    success: true,
+    message: "Address deleted successfully",
+    addresses: userObj.addresses,
+  });
+});

@@ -211,6 +211,35 @@ export const productStatus = asyncErrorHandler(async (req, res) => {
   });
 });
 
+// Delete Product
+export const deleteProduct = asyncErrorHandler(async (req, res) => {
+  const currentProduct = await product.findById(req.params.id);
+  
+  if (!currentProduct) {
+    return res.status(404).json({
+      success: false,
+      message: "Product not found.",
+    });
+  }
+
+  const productBrand = await brands.findOne({ name: currentProduct.brand });
+  
+  if (productBrand) {
+    productBrand.totalProducts -= 1;
+    if (currentProduct.isActive) {
+      productBrand.activeProducts -= 1;
+    }
+    await productBrand.save();
+  }
+
+  await product.findByIdAndDelete(req.params.id);
+
+  res.status(200).json({
+    success: true,
+    message: "Product deleted successfully.",
+  });
+});
+
 // Get Admin Dashboard Details
 // export const getAdminDetails = asyncErrorHandler(async (req, res) => {
 //   const label1 = [

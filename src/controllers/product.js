@@ -6,6 +6,7 @@ import order from "../models/order.js";
 import user from "../models/user.js";
 import brands from "../models/brands.js";
 import category from "../models/category.js";
+import color from "../models/colors.js";
 
 // Get all products
 export const getAllProducts = asyncErrorHandler(async (req, res) => {
@@ -16,41 +17,81 @@ export const getAllProducts = asyncErrorHandler(async (req, res) => {
   });
 });
 
+const toArray = (value) => {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (value === undefined || value === null || value === "") {
+    return [];
+  }
+  return [value];
+};
+
 // Get products with filters, pagination, and sorting
 export const getProducts = asyncErrorHandler(async (req, res) => {
   const page = parseInt(req.query.page) - 1 || 0;
   const limit = parseInt(req.query.limit) || 12;
   const search = req.query.search || "";
   const sortParam = req.query.sortBy?.value || "createdAt_asc";
-  const colors = req.query.color;
-  const sizes = req.query.size;
-  const brand = req.query.brand;
-  const priceRange = req.query.price || {};
-  const categoryOpt = req.query.category;
+  const colorValues = toArray(req.query.color).map((item) => item?.trim()).filter(Boolean);
+  const sizeValues = toArray(req.query.size)
+    .map((size) => Number(size))
+    .filter((size) => !Number.isNaN(size));
+  const brandValues = toArray(req.query.brand).map((item) => item?.trim()).filter(Boolean);
+  
+  // Handle price range - support both nested object and flat query params
+  let priceRange = req.query.price || {};
+  
+  // If price is not an object, try to parse from flat params (price[minPrice], price[maxPrice])
+  if (typeof priceRange !== 'object' || Array.isArray(priceRange)) {
+    priceRange = {};
+  }
+  
+  // Also check for flat query params (in case Express doesn't parse nested)
+  if (!priceRange.minPrice && req.query['price[minPrice]'] !== undefined) {
+    priceRange.minPrice = req.query['price[minPrice]'];
+  }
+  if (!priceRange.maxPrice && req.query['price[maxPrice]'] !== undefined) {
+    priceRange.maxPrice = req.query['price[maxPrice]'];
+  }
+  
+  const categoryValues = toArray(req.query.category).map((item) => item?.trim()).filter(Boolean);
+  const hasMinPrice = priceRange.minPrice !== undefined && priceRange.minPrice !== "" && priceRange.minPrice !== null;
+  const hasMaxPrice = priceRange.maxPrice !== undefined && priceRange.maxPrice !== "" && priceRange.maxPrice !== null;
+  const parsedMinPrice = Number(priceRange.minPrice);
+  const parsedMaxPrice = Number(priceRange.maxPrice);
 
   const query = {
     name: { $regex: search, $options: "i" },
-    price: {
-      $gte: parseInt(priceRange.minPrice) || 0,
-      $lte: parseInt(priceRange.maxPrice) || Infinity,
-    },
     isActive: true,
   };
 
-  if (brand && brand.length > 0) {
-    query.brand = { $in: brand.map((b) => b) };
+  if (!Number.isNaN(parsedMinPrice) || !Number.isNaN(parsedMaxPrice)) {
+    query.price = {};
+    if (!Number.isNaN(parsedMinPrice) && hasMinPrice) {
+      query.price.$gte = parsedMinPrice;
+    }
+    if (!Number.isNaN(parsedMaxPrice) && hasMaxPrice) {
+      query.price.$lte = parsedMaxPrice;
+    }
   }
 
-  if (colors && colors.length > 0) {
-    query.color = { $in: colors.map((c) => new RegExp(`^${c}$`, "i")) };
+  if (brandValues.length > 0) {
+    query.brand = { $in: brandValues };
   }
 
-  if (sizes && sizes.length > 0) {
-    query["sizeQuantity.size"] = { $in: sizes.map(Number) };
+  if (colorValues.length > 0) {
+    query.color = { $in: colorValues.map((c) => new RegExp(`^${c}$`, "i")) };
   }
 
-  if (categoryOpt) {
-    query.category = { $regex: categoryOpt, $options: "i" };
+  if (sizeValues.length > 0) {
+    query["sizeQuantity.size"] = { $in: sizeValues };
+  }
+
+  if (categoryValues.length > 0) {
+    query.category = {
+      $in: categoryValues.map((cat) => new RegExp(`^${cat}$`, "i")),
+    };
   }
 
   let sortField = "createdAt";
@@ -68,17 +109,23 @@ export const getProducts = asyncErrorHandler(async (req, res) => {
     .skip(page * limit)
     .limit(limit);
 
+  const colorOption = await color.find({}).select("name");
   const colorOptions = await product.distinct("color");
   const brandOption = await brands.find({}).select("name");
   const brandOptions = brandOption.map((b) => b.name);
-  const categoryOption = await category.find({}).select("name");
+  const categoryOption = await category
+    .find({ description: { $not: /^dashboard$/i } })
+    .select("name");
   const categoryOptions = categoryOption.map((c) => c.name);
   const total = await product.countDocuments(query);
+
+
 
   res.status(200).json({
     success: true,
     count: total,
     products,
+    colorOption,
     colorOptions,
     brandOptions,
     categoryOptions,
@@ -106,6 +153,7 @@ export const createProduct = asyncErrorHandler(async (req, res, next) => {
     name,
     brand,
     image,
+    images,
     desc,
     price,
     sizeQuantity,
@@ -140,6 +188,7 @@ export const createProduct = asyncErrorHandler(async (req, res, next) => {
     name,
     brand,
     image,
+    images: images && Array.isArray(images) ? images : [],
     description: desc,
     price,
     sizeQuantity,
@@ -168,6 +217,7 @@ export const updateProduct = asyncErrorHandler(async (req, res, next) => {
     name,
     brand,
     image,
+    images,
     desc,
     price,
     sizeQuantity,
@@ -202,6 +252,7 @@ export const updateProduct = asyncErrorHandler(async (req, res, next) => {
     name,
     brand,
     image,
+    images: images && Array.isArray(images) ? images : [],
     description: desc,
     price,
     sizeQuantity,
@@ -270,11 +321,17 @@ export const getFilterOptions = asyncErrorHandler(async (req, res) => {
   const colors = await product.distinct("color");
   const cat = await category.find({}).select("name");
   const brandList = await brands.find({}).select("name");
+  const rawSizes = await product.distinct("sizeQuantity.size");
+  const sizes = rawSizes
+    .map((size) => Number(size))
+    .filter((size) => !Number.isNaN(size))
+    .sort((a, b) => a - b);
 
   res.status(200).json({
     success: true,
     colors,
     brands: brandList,
     category: cat,
+    sizes,
   });
 });
