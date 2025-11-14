@@ -286,17 +286,86 @@ export const updateReview = asyncErrorHandler(async (req, res, next) => {
   productObj.ratingScore += rating;
   await productObj.save();
 
-  const orderObj = await order.findById(orderId);
-  orderObj.products = orderObj.products.map((item) => {
-    if (String(item.productId) === String(productId)) {
-      item.isReviewed = true;
+  // Update order only if orderId is provided (for order-based reviews)
+  if (orderId) {
+    const orderObj = await order.findById(orderId);
+    if (orderObj) {
+      orderObj.products = orderObj.products.map((item) => {
+        if (String(item.productId) === String(productId)) {
+          item.isReviewed = true;
+        }
+        return item;
+      });
+      await orderObj.save();
     }
-    return item;
-  });
-  await orderObj.save();
+  }
   return res.status(200).json({
     success: true,
     message: "Review added successfully",
+  });
+});
+
+// Edit existing review
+export const editReview = asyncErrorHandler(async (req, res, next) => {
+  const id = req.tokenId;
+  const { productId, reviewIndex, rating, review } = req.body;
+  const userObj = await user.findById(id).select("name");
+  if (!userObj) {
+    return next(new errorHandler("Invalid Token", 401));
+  }
+  const productObj = await product.findById(productId);
+  if (!productObj) {
+    return next(new errorHandler("Invalid Product id", 404));
+  }
+  if (!productObj.ratings || reviewIndex < 0 || reviewIndex >= productObj.ratings.length) {
+    return next(new errorHandler("Review not found", 404));
+  }
+  const existingReview = productObj.ratings[reviewIndex];
+  // Verify the review belongs to the current user
+  if (existingReview.name !== userObj.name) {
+    return next(new errorHandler("You can only edit your own reviews", 403));
+  }
+  // Update rating score: subtract old rating, add new rating
+  productObj.ratingScore = productObj.ratingScore - existingReview.rating + rating;
+  // Update the review
+  productObj.ratings[reviewIndex].rating = rating;
+  productObj.ratings[reviewIndex].review = review;
+  productObj.ratings[reviewIndex].date = new Date(); // Update date to current date
+  await productObj.save();
+  return res.status(200).json({
+    success: true,
+    message: "Review updated successfully",
+  });
+});
+
+// Delete review
+export const deleteReview = asyncErrorHandler(async (req, res, next) => {
+  const id = req.tokenId;
+  const { productId, reviewIndex } = req.body;
+  const userObj = await user.findById(id).select("name");
+  if (!userObj) {
+    return next(new errorHandler("Invalid Token", 401));
+  }
+  const productObj = await product.findById(productId);
+  if (!productObj) {
+    return next(new errorHandler("Invalid Product id", 404));
+  }
+  if (!productObj.ratings || reviewIndex < 0 || reviewIndex >= productObj.ratings.length) {
+    return next(new errorHandler("Review not found", 404));
+  }
+  const existingReview = productObj.ratings[reviewIndex];
+  // Verify the review belongs to the current user
+  if (existingReview.name !== userObj.name) {
+    return next(new errorHandler("You can only delete your own reviews", 403));
+  }
+  // Subtract rating from total score
+  productObj.ratingScore -= existingReview.rating;
+  // Remove the review
+  productObj.ratings.splice(reviewIndex, 1);
+  await productObj.save();
+  return res.status(200).json({
+    success: true,
+    message: "Review deleted successfully",
   });
 });
 
