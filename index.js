@@ -24,12 +24,20 @@ const app = express();
 
 
 // Correct CORS setup
+// app.use(
+//   cors({
+//     origin: "http://localhost:5173", // frontend URL
+//     credentials: true, // allow cookies / auth headers
+//   })
+// );
+
 app.use(
   cors({
-    origin: "http://localhost:5173", // frontend URL
-    credentials: true, // allow cookies / auth headers
+    origin: true,  // reflects the request origin
+    credentials: true,
   })
 );
+
 
 // Configure query parser to handle nested objects
 app.set('query parser', (str) => {
