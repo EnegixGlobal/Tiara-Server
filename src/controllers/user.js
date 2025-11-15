@@ -392,3 +392,47 @@ export const deleteAddress = asyncErrorHandler(async (req, res, next) => {
     addresses: userObj.addresses,
   });
 });
+
+// Update User Profile
+export const updateProfile = asyncErrorHandler(async (req, res, next) => {
+  const id = req.tokenId;
+  const { name, email } = req.body;
+
+  if (!name || !email) {
+    return next(new errorHandler("Please provide name and email", 400));
+  }
+
+  // Validate email format
+  const emailRegex = /^([\w-\.]+@([\w-]+\.)+[\w-]{2,})$/;
+  if (!emailRegex.test(email)) {
+    return next(new errorHandler("Please provide a valid email", 400));
+  }
+
+  const userObj = await user.findById(id);
+  if (!userObj) {
+    return next(new errorHandler("User not found", 404));
+  }
+
+  // Check if email is being changed and if it already exists
+  if (email !== userObj.email) {
+    const emailExists = await user.findOne({ email });
+    if (emailExists) {
+      return next(new errorHandler("Email already exists", 400));
+    }
+  }
+
+  // Update user profile
+  userObj.name = name;
+  userObj.email = email;
+  await userObj.save();
+
+  res.status(200).json({
+    success: true,
+    message: "Profile updated successfully",
+    user: {
+      name: userObj.name,
+      email: userObj.email,
+      role: userObj.role,
+    },
+  });
+});

@@ -24,20 +24,12 @@ const app = express();
 
 
 // Correct CORS setup
-// app.use(
-//   cors({
-//     origin: "http://localhost:5173", // frontend URL
-//     credentials: true, // allow cookies / auth headers
-//   })
-// );
-
 app.use(
   cors({
-    origin: true,  // reflects the request origin
-    credentials: true,
+    origin: "http://localhost:5173", // frontend URL
+    credentials: true, // allow cookies / auth headers
   })
 );
-
 
 // Configure query parser to handle nested objects
 app.set('query parser', (str) => {
@@ -50,8 +42,10 @@ app.set('query parser', (str) => {
 // Middleware setup
 app.use(express.static("./public"));
 
-// Webhook (needs raw body handling before express.json)
-app.post("/webhook", express.raw({ type: "application/json" }), webhook);
+// Webhook for Razorpay (OPTIONAL - payment flow works without webhooks)
+// Webhook is only needed for backup verification or real-time updates
+// If you don't want to use webhooks, you can comment out or remove this route
+app.post("/api/v1/webhook", express.raw({ type: "application/json" }), webhook);
 
 // Must come **after** webhook route
 app.use(express.json());

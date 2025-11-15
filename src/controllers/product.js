@@ -90,9 +90,23 @@ export const getProducts = asyncErrorHandler(async (req, res) => {
   }
 
   if (categoryValues.length > 0) {
-    query.category = {
-      $in: categoryValues.map((cat) => new RegExp(`^${cat}$`, "i")),
-    };
+    // Categories are stored as comma-separated strings like "flat,daily comfort,casual wear"
+    // Category field is lowercase (schema has lowercase: true)
+    // We need to match if any selected category appears in the comma-separated string
+    
+    // Normalize to lowercase and escape special regex characters
+    const normalizedCats = categoryValues.map((cat) => 
+      cat.trim().toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    );
+    
+    // Use $or to match if category string contains any of the selected categories
+    // Pattern: (^|,)category(,|$) matches category at start, middle, or end
+    query.$or = query.$or || [];
+    normalizedCats.forEach((cat) => {
+      query.$or.push({
+        category: { $regex: `(^|,)\\s*${cat}\\s*(,|$)`, $options: "i" }
+      });
+    });
   }
 
   let sortField = "createdAt";

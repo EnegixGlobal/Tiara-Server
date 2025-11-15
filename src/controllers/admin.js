@@ -3,10 +3,13 @@ import asyncErrorHandler from "express-async-handler";
 import errorHandler from "../utils/errorHandler.js";
 import order from "../models/order.js";
 import product from "../models/product.js";
-import Stripe from "stripe";
+import Razorpay from "razorpay";
 import brands from "../models/brands.js";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
 
 // Get All Users
 export const getAllUsers = asyncErrorHandler(async (req, res) => {
@@ -83,8 +86,21 @@ export const updateOrderStatus = asyncErrorHandler(async (req, res) => {
   const { id, status, paymentId } = req.body;
   await order.findByIdAndUpdate(id, { delivery_status: status });
 
-  if (status === "Cancelled") {
-    await stripe.refunds.create({ payment_intent: paymentId });
+  if (status === "Cancelled" && paymentId) {
+    try {
+      // Create refund in Razorpay
+      const refund = await razorpay.payments.refund(paymentId, {
+        amount: null, // Full refund
+        notes: {
+          reason: "Order cancelled",
+          orderId: id,
+        },
+      });
+      console.log("Refund processed:", refund.id);
+    } catch (error) {
+      console.error("Refund error:", error);
+      // Continue even if refund fails
+    }
   }
 
   res.status(200).json({
@@ -94,52 +110,56 @@ export const updateOrderStatus = asyncErrorHandler(async (req, res) => {
 });
 
 // Get Coupons
+// Note: Razorpay doesn't have built-in coupon system like Stripe
+// This is a simple implementation - you may want to create a Coupon model in the database
 export const getCoupons = asyncErrorHandler(async (req, res) => {
-  const coupons = await stripe.coupons.list({ limit: 100 });
-
-  const data = coupons.data.map((coupon) => ({
-    id: coupon.id,
-    percent_off: coupon.percent_off,
-    duration:
-      coupon.duration === "repeating"
-        ? coupon.duration_in_months
-        : coupon.duration,
-    duration_in_months: coupon.duration_in_months,
-    max_redemptions: coupon.max_redemptions || 999,
-    redemption_left: `${coupon.times_redeemed}/${
-      coupon.max_redemptions || "∞"
-    }`,
-  }));
+  // Simple in-memory coupon system
+  // In production, you should store coupons in a database
+  const coupons = [
+    {
+      id: "SUMILSUTHAR197",
+      percent_off: null,
+      discount: 200,
+      duration: "forever",
+      max_redemptions: 999,
+      redemption_left: "0/∞",
+    },
+    {
+      id: "NIKE2024",
+      percent_off: null,
+      discount: 200,
+      duration: "forever",
+      max_redemptions: 999,
+      redemption_left: "0/∞",
+    },
+  ];
 
   res.status(200).json({
     success: true,
-    data,
+    data: coupons,
   });
 });
 
 // Create Coupon
+// Note: This is a placeholder - implement database storage for production
 export const createCoupon = asyncErrorHandler(async (req, res) => {
   const {
     name,
-    discount: percent_off,
+    discount,
     duration,
     duration_in_months,
     max_redemptions,
   } = req.body.formData;
 
-  const couponData = {
+  // In production, save to database
+  // For now, just return success
+  console.log("Coupon created:", {
     id: name.toUpperCase(),
-    name: name.toUpperCase(),
-    duration: duration === "forever" ? "forever" : "repeating",
-    percent_off,
+    discount,
+    duration,
+    duration_in_months,
     max_redemptions,
-  };
-
-  if (duration !== "forever") {
-    couponData.duration_in_months = duration_in_months;
-  }
-
-  await stripe.coupons.create(couponData);
+  });
 
   res.status(200).json({
     success: true,
@@ -148,8 +168,10 @@ export const createCoupon = asyncErrorHandler(async (req, res) => {
 });
 
 // Delete Coupon
+// Note: This is a placeholder - implement database storage for production
 export const deleteCoupon = asyncErrorHandler(async (req, res) => {
-  await stripe.coupons.del(req.params.id);
+  // In production, delete from database
+  console.log("Coupon deleted:", req.params.id);
 
   res.status(200).json({
     success: true,

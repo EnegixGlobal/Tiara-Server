@@ -11,6 +11,7 @@ import {
   getAddresses,
   updateAddress,
   deleteAddress,
+  updateProfile,
 } from "../controllers/user.js";
 import { verifyToken } from "../middleware/auth.js";
 
@@ -23,6 +24,9 @@ router.route("/verify").get(verifyUser);
 router.route("/orders").get(getOrder);
 router.route("/forgetpassword/:email").get(forgetPassword);
 router.route("/resetpassword").post(changeResetPassword);
+
+// Profile route (protected)
+router.route("/profile").put(verifyToken, updateProfile);
 
 // Address routes (protected)
 router.route("/address").post(verifyToken, addAddress).get(verifyToken, getAddresses);
