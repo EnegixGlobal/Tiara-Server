@@ -81,6 +81,7 @@ export const getProducts = asyncErrorHandler(async (req, res) => {
   }
 
   if (colorValues.length > 0) {
+    // Handle color as array - check if any color in the array matches
     query.color = { $in: colorValues.map((c) => new RegExp(`^${c}$`, "i")) };
   }
 
@@ -110,7 +111,17 @@ export const getProducts = asyncErrorHandler(async (req, res) => {
     .limit(limit);
 
   const colorOption = await color.find({}).select("name");
-  const colorOptions = await product.distinct("color");
+  // Get distinct colors from products - handle array format
+  const allProductsForColors = await product.find({ isActive: true }).select("color");
+  const colorSet = new Set();
+  allProductsForColors.forEach((product) => {
+    if (Array.isArray(product.color)) {
+      product.color.forEach((c) => colorSet.add(c));
+    } else if (typeof product.color === 'string' && product.color) {
+      colorSet.add(product.color);
+    }
+  });
+  const colorOptions = Array.from(colorSet).sort();
   const brandOption = await brands.find({}).select("name");
   const brandOptions = brandOption.map((b) => b.name);
   const categoryOption = await category
@@ -163,6 +174,14 @@ export const createProduct = asyncErrorHandler(async (req, res, next) => {
     category: cat,
   } = req.body;
 
+  // Convert color to array if it's a string (comma-separated)
+  let colorArray = color;
+  if (typeof color === 'string') {
+    colorArray = color.split(',').map(c => c.trim()).filter(c => c.length > 0);
+  } else if (!Array.isArray(color)) {
+    colorArray = [];
+  }
+
   if (
     !sku ||
     !name ||
@@ -170,7 +189,8 @@ export const createProduct = asyncErrorHandler(async (req, res, next) => {
     !image ||
     !desc ||
     !price ||
-    !color ||
+    !colorArray ||
+    colorArray.length === 0 ||
     !material ||
     !cat ||
     sizeQuantity.length === 0
@@ -192,7 +212,7 @@ export const createProduct = asyncErrorHandler(async (req, res, next) => {
     description: desc,
     price,
     sizeQuantity,
-    color,
+    color: colorArray,
     material,
     category: cat,
     isFeatured: featured,
@@ -227,6 +247,14 @@ export const updateProduct = asyncErrorHandler(async (req, res, next) => {
     category: cat,
   } = req.body;
 
+  // Convert color to array if it's a string (comma-separated)
+  let colorArray = color;
+  if (typeof color === 'string') {
+    colorArray = color.split(',').map(c => c.trim()).filter(c => c.length > 0);
+  } else if (!Array.isArray(color)) {
+    colorArray = [];
+  }
+
   if (
     !sku ||
     !name ||
@@ -234,7 +262,8 @@ export const updateProduct = asyncErrorHandler(async (req, res, next) => {
     !image ||
     !desc ||
     !price ||
-    !color ||
+    !colorArray ||
+    colorArray.length === 0 ||
     !material ||
     !cat ||
     sizeQuantity.length === 0
@@ -256,7 +285,7 @@ export const updateProduct = asyncErrorHandler(async (req, res, next) => {
     description: desc,
     price,
     sizeQuantity,
-    color,
+    color: colorArray,
     material,
     isFeatured: featured,
     category: cat,
@@ -387,7 +416,18 @@ export const getFeaturedProducts = asyncErrorHandler(async (req, res) => {
 
 // Filter options for UI
 export const getFilterOptions = asyncErrorHandler(async (req, res) => {
-  const colors = await product.distinct("color");
+  // Get all colors from products - handle both array and string formats
+  const allProducts = await product.find({ isActive: true }).select("color");
+  const colorSet = new Set();
+  allProducts.forEach((product) => {
+    if (Array.isArray(product.color)) {
+      product.color.forEach((c) => colorSet.add(c));
+    } else if (typeof product.color === 'string' && product.color) {
+      colorSet.add(product.color);
+    }
+  });
+  const colors = Array.from(colorSet).sort();
+  
   const cat = await category.find({}).select("name");
   const brandList = await brands.find({}).select("name");
   const rawSizes = await product.distinct("sizeQuantity.size");

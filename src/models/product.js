@@ -169,9 +169,15 @@ const productSchema = new mongoose.Schema(
       required: [true, "Please provide a price"],
     },
     color: {
-      type: String,
-      trim: true,
-      required: [true, "Please provide a color"],
+      type: [String],
+      default: [],
+      required: [true, "Please provide at least one color"],
+      validate: {
+        validator: function(v) {
+          return Array.isArray(v) && v.length > 0;
+        },
+        message: "At least one color is required"
+      }
     },
     material: {
       type: String,
@@ -198,10 +204,14 @@ const productSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// 👇 Automatically create slug from name + color
+// 👇 Automatically create slug from name + first color
 productSchema.pre("save", function (next) {
   if (this.isModified("name") || this.isModified("color")) {
-    this.slug = slugify(`${this.name}-${this.color}`, {
+    // Use first color for slug generation, or join all colors if multiple
+    const colorStr = Array.isArray(this.color) && this.color.length > 0
+      ? this.color[0]
+      : (typeof this.color === 'string' ? this.color : '');
+    this.slug = slugify(`${this.name}-${colorStr}`, {
       lower: true,
       strict: true,
     });
