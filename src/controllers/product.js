@@ -181,6 +181,7 @@ export const createProduct = asyncErrorHandler(async (req, res, next) => {
     images,
     desc,
     price,
+    mrp,
     sizeQuantity,
     color,
     material,
@@ -202,7 +203,8 @@ export const createProduct = asyncErrorHandler(async (req, res, next) => {
     !brand ||
     !image ||
     !desc ||
-    !price ||
+    price === undefined ||
+    price === null ||
     !colorArray ||
     colorArray.length === 0 ||
     !material ||
@@ -210,6 +212,21 @@ export const createProduct = asyncErrorHandler(async (req, res, next) => {
     sizeQuantity.length === 0
   ) {
     return next(new errorHandler("Please fill all fields", 400));
+  }
+
+  const parsedPrice = Number(price);
+  if (Number.isNaN(parsedPrice) || parsedPrice <= 0) {
+    return next(new errorHandler("Please provide a valid price", 400));
+  }
+  let parsedMrp = Number(mrp);
+  if (mrp === undefined || mrp === null || mrp === "") {
+    parsedMrp = parsedPrice;
+  }
+  if (Number.isNaN(parsedMrp) || parsedMrp <= 0) {
+    parsedMrp = parsedPrice;
+  }
+  if (parsedMrp < parsedPrice) {
+    parsedMrp = parsedPrice;
   }
 
   const productExists = await product.findOne({ sku });
@@ -224,7 +241,8 @@ export const createProduct = asyncErrorHandler(async (req, res, next) => {
     image,
     images: images && Array.isArray(images) ? images : [],
     description: desc,
-    price,
+    price: parsedPrice,
+    mrp: parsedMrp,
     sizeQuantity,
     color: colorArray,
     material,
@@ -254,6 +272,7 @@ export const updateProduct = asyncErrorHandler(async (req, res, next) => {
     images,
     desc,
     price,
+    mrp,
     sizeQuantity,
     color,
     material,
@@ -275,7 +294,8 @@ export const updateProduct = asyncErrorHandler(async (req, res, next) => {
     !brand ||
     !image ||
     !desc ||
-    !price ||
+    price === undefined ||
+    price === null ||
     !colorArray ||
     colorArray.length === 0 ||
     !material ||
@@ -283,6 +303,21 @@ export const updateProduct = asyncErrorHandler(async (req, res, next) => {
     sizeQuantity.length === 0
   ) {
     return next(new errorHandler("Please fill all fields", 400));
+  }
+
+  const parsedPrice = Number(price);
+  if (Number.isNaN(parsedPrice) || parsedPrice <= 0) {
+    return next(new errorHandler("Please provide a valid price", 400));
+  }
+  let parsedMrp = Number(mrp);
+  if (mrp === undefined || mrp === null || mrp === "") {
+    parsedMrp = parsedPrice;
+  }
+  if (Number.isNaN(parsedMrp) || parsedMrp <= 0) {
+    parsedMrp = parsedPrice;
+  }
+  if (parsedMrp < parsedPrice) {
+    parsedMrp = parsedPrice;
   }
 
   const productExists = await product.findOne({ slug });
@@ -297,7 +332,8 @@ export const updateProduct = asyncErrorHandler(async (req, res, next) => {
     image,
     images: images && Array.isArray(images) ? images : [],
     description: desc,
-    price,
+    price: parsedPrice,
+    mrp: parsedMrp,
     sizeQuantity,
     color: colorArray,
     material,

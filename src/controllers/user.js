@@ -171,7 +171,9 @@ export const forgetPassword = asyncErrorHandler(async (req, res, next) => {
     expiresIn: "5m",
   });
 
-  const resetUrl = `${process.env.CLIENT_URL}/resetpassword?token=${token}&id=${userExists._id}`;
+  // URL encode the token to handle special characters
+  const encodedToken = encodeURIComponent(token);
+  const resetUrl = `${process.env.CLIENT_URL}/resetpassword?token=${encodedToken}&id=${userExists._id}`;
   await sendEmail({
     email,
     subject: "Password Reset Request for Your Account",
@@ -182,9 +184,11 @@ export const forgetPassword = asyncErrorHandler(async (req, res, next) => {
             <h1>Password Reset Request</h1>
             <p>We received a request to reset your password. Click the button below to set a new password:</p>
             <div style="text-align: center; margin: 20px 0;">
-              <a href="${resetUrl}" style="background-color: #4CAF50; color: white; text-decoration: none; padding: 10px 20px; border-radius: 5px;">Reset Password</a>
+              <a href="${resetUrl}" style="background-color: #4CAF50; color: white; text-decoration: none; padding: 10px 20px; border-radius: 5px; display: inline-block;">Reset Password</a>
             </div>
-            <p>Please Note: This link is valid for 5 minutes.</p>
+            <p style="margin-top: 20px; word-break: break-all;">If the button doesn't work, copy and paste this link into your browser:</p>
+            <p style="word-break: break-all; color: #0066cc;"><a href="${resetUrl}" style="color: #0066cc;">${resetUrl}</a></p>
+            <p style="margin-top: 20px;"><strong>Please Note:</strong> This link is valid for 5 minutes only.</p>
             <p>If you didn't request a password reset, please ignore this email.</p>
             <p>Thanks,<br/>Team TiaraSteps</p>
           </div>
@@ -211,9 +215,18 @@ export const changeResetPassword = asyncErrorHandler(async (req, res, next) => {
     return next(new errorHandler("User not found", 404));
   }
 
-  const verify = jwt.verify(token, secret + userExists.password);
-  if (verify.id !== userId && verify.exp < Date.now() / 1000) {
-    return next(new errorHandler("Token has expired", 400));
+  try {
+    const verify = jwt.verify(token, secret + userExists.password);
+    
+    // Check if token id matches userId
+    if (verify.id !== userId.toString()) {
+      return next(new errorHandler("Invalid token", 400));
+    }
+  } catch (error) {
+    if (error.name === "TokenExpiredError") {
+      return next(new errorHandler("Token has expired", 400));
+    }
+    return next(new errorHandler("Invalid or expired token", 400));
   }
 
   userExists.password = password;

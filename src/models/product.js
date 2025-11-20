@@ -168,6 +168,10 @@ const productSchema = new mongoose.Schema(
       type: Number,
       required: [true, "Please provide a price"],
     },
+    mrp: {
+      type: Number,
+      default: 0,
+    },
     color: {
       type: [String],
       default: [],
