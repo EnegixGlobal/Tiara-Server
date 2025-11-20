@@ -154,6 +154,7 @@ export const verifyPayment = asyncErrorHandler(async (req, res) => {
     const newOrder = await order.create({
       userId: notes.userId,
       paymentIntentId: razorpay_payment_id,
+      paymentMethod: "online",
       products,
       subtotal: notes.subtotal,
       total: razorpayOrder.amount / 100,
@@ -374,6 +375,176 @@ export const verifyPayment = asyncErrorHandler(async (req, res) => {
 // - Backup verification if frontend verification fails
 // - Handling edge cases (payment captured but frontend didn't call verifyPayment)
 // - Real-time order updates without user interaction
+export const cashOnDelivery = asyncErrorHandler(async (req, res) => {
+  const id = req.tokenId;
+  const email = req.tokenEmail;
+  const { coupon, addressId } = req.body;
+
+  if (!addressId) {
+    return res.status(400).json({
+      success: false,
+      message: "Delivery address is required for Cash on Delivery orders",
+    });
+  }
+
+  const userObj = await user
+    .findById(id)
+    .populate({
+      path: "cart.items.productId",
+      select: "name price image brand sizeQuantity",
+    })
+    .select("cart name email addresses");
+
+  if (!userObj || !userObj.cart || userObj.cart.items.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: "Your cart is empty",
+    });
+  }
+
+  const formattedCart = userObj.cart.items
+    .map((item) => {
+      if (!item.productId) return null;
+      const sizeInfo = item.productId.sizeQuantity.find(
+        (size) => size.size === item.size
+      );
+      const availableQty = sizeInfo ? sizeInfo.quantity : 0;
+      const safeQty = Math.max(
+        0,
+        Math.min(item.qty, availableQty)
+      );
+      if (safeQty === 0) return null;
+
+      return {
+        productId: item.productId._id,
+        name: `${item.productId.brand} ${item.productId.name}`,
+        image: item.productId.image,
+        qty: safeQty,
+        size: item.size,
+        price: item.productId.price,
+      };
+    })
+    .filter(Boolean);
+
+  if (formattedCart.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: "Selected items are unavailable in the requested quantities",
+    });
+  }
+
+  const subtotal = formattedCart.reduce(
+    (sum, item) => sum + item.price * item.qty,
+    0
+  );
+
+  let discount = 0;
+  if (coupon && coupon !== "") {
+    const validCoupons = ["SUMILSUTHAR197", "NIKE2024"];
+    if (validCoupons.includes(coupon.toUpperCase())) {
+      discount = 200;
+    }
+  }
+
+  const total = Math.max(subtotal - discount, 0);
+  const shippingAddress = userObj.addresses?.find(
+    (addr) => addr._id.toString() === addressId
+  );
+
+  if (!shippingAddress) {
+    return res.status(404).json({
+      success: false,
+      message: "Selected address was not found",
+    });
+  }
+
+  const codReference = `COD-${Date.now()}`;
+
+  const newOrder = await order.create({
+    userId: id,
+    paymentIntentId: codReference,
+    paymentMethod: "cod",
+    products: formattedCart.map((item) => ({
+      productId: item.productId,
+      quantity: item.qty,
+      size: item.size,
+    })),
+    subtotal,
+    total,
+    shipping: {
+      email: email || userObj.email,
+      addressId: shippingAddress._id,
+      address: {
+        fullName: shippingAddress.fullName,
+        addressLine1: shippingAddress.addressLine1,
+        addressLine2: shippingAddress.addressLine2,
+        landmark: shippingAddress.landmark,
+        city: shippingAddress.city,
+        state: shippingAddress.state,
+        pincode: shippingAddress.pincode,
+        phone: shippingAddress.phone,
+        addressType: shippingAddress.addressType,
+      },
+      method: "COD",
+    },
+    payment_status: "cod_pending",
+  });
+
+  // Update product quantities
+  for (const item of formattedCart) {
+    const productObj = await product.findById(item.productId);
+    if (productObj) {
+      productObj.sizeQuantity = productObj.sizeQuantity
+        .map((size) => {
+          if (size.size === item.size) {
+            size.quantity -= item.qty;
+          }
+          return size;
+        })
+        .filter((size) => size.quantity > 0);
+      await productObj.save();
+    }
+  }
+
+  // Clear cart
+  userObj.cart.items = [];
+  userObj.cart.totalPrice = 0;
+  await userObj.save();
+
+  try {
+    await sendEmail({
+      email: email || userObj.email,
+      subject: `Cash on Delivery Order Placed - #${newOrder._id
+        .toString()
+        .slice(-8)
+        .toUpperCase()}`,
+      message: `
+        <div style="font-family: Arial, sans-serif; color: #111827;">
+          <h2>Thanks for choosing Cash on Delivery!</h2>
+          <p>Your order has been placed successfully. Please keep ₹${total.toFixed(
+            2
+          )} ready at the time of delivery.</p>
+          <p><strong>Order ID:</strong> #${newOrder._id
+            .toString()
+            .slice(-8)
+            .toUpperCase()}</p>
+          <p><strong>Delivery Address:</strong> ${shippingAddress.fullName}, ${
+        shippingAddress.addressLine1
+      }, ${shippingAddress.city} - ${shippingAddress.pincode}</p>
+        </div>
+      `,
+    });
+  } catch (emailError) {
+    console.error("Failed to send COD confirmation email:", emailError);
+  }
+
+  res.json({
+    success: true,
+    message: "Cash on Delivery order placed successfully",
+    orderId: newOrder._id,
+  });
+});
+
 export const webhook = asyncErrorHandler(async (request, response) => {
   // Webhook secret is optional - if not set, webhook will still work but without signature verification
   const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;

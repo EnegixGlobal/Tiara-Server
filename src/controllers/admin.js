@@ -47,7 +47,9 @@ export const getAllOrders = asyncErrorHandler(async (req, res) => {
       path: "products.productId",
       select: "name price brand image slug color",
     })
-    .select("user products createdAt delivery_status total paymentIntentId")
+    .select(
+      "user products createdAt delivery_status total paymentIntentId paymentMethod payment_status"
+    )
     .sort("-createdAt")
     .skip((page - 1) * limit)
     .limit(limit);
@@ -67,6 +69,8 @@ export const getAllOrders = asyncErrorHandler(async (req, res) => {
     total: ord.total,
     delivered: ord.delivery_status,
     paymentId: ord.paymentIntentId,
+    paymentMethod: ord.paymentMethod || "online",
+    paymentStatus: ord.payment_status || "",
     createdAt: new Date(ord.createdAt).toLocaleDateString("en-GB", {
       day: "numeric",
       month: "long",
@@ -83,8 +87,27 @@ export const getAllOrders = asyncErrorHandler(async (req, res) => {
 
 // Update Order Status
 export const updateOrderStatus = asyncErrorHandler(async (req, res) => {
-  const { id, status, paymentId } = req.body;
-  await order.findByIdAndUpdate(id, { delivery_status: status });
+  const { id, status, paymentId, paymentStatus } = req.body;
+
+  if (!id) {
+    return errorHandler(res, 400, "Order id is required.");
+  }
+
+  const updatePayload = {};
+
+  if (status) {
+    updatePayload.delivery_status = status;
+  }
+
+  if (paymentStatus) {
+    updatePayload.payment_status = paymentStatus;
+  }
+
+  if (Object.keys(updatePayload).length === 0) {
+    return errorHandler(res, 400, "No update fields provided.");
+  }
+
+  await order.findByIdAndUpdate(id, updatePayload);
 
   if (status === "Cancelled" && paymentId) {
     try {
@@ -103,9 +126,13 @@ export const updateOrderStatus = asyncErrorHandler(async (req, res) => {
     }
   }
 
+  const message = paymentStatus
+    ? "Payment status updated successfully."
+    : "Order status updated successfully.";
+
   res.status(200).json({
     success: true,
-    message: "Order status updated successfully.",
+    message,
   });
 });
 

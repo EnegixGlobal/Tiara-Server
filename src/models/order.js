@@ -4,6 +4,11 @@ const orderSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Types.ObjectId, ref: "User", required: true },
     paymentIntentId: { type: String, required: true },
+    paymentMethod: {
+      type: String,
+      enum: ["online", "cod"],
+      default: "online",
+    },
     products: [
       {
         productId: {
