@@ -125,10 +125,23 @@ export const verifyUser = asyncErrorHandler(async (req, res, next) => {
 
 // Get Orders by user token
 export const getOrder = asyncErrorHandler(async (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1];
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return next(new errorHandler("Token not found", 401));
+  
+  // Handle both "Bearer <token>" and just "<token>" formats
+  const token = authHeader.startsWith("Bearer ") 
+    ? authHeader.split(" ")[1] 
+    : authHeader;
+    
   if (!token) return next(new errorHandler("Token not found", 401));
 
-  const { id } = jwt.verify(token, secret);
+  let id;
+  try {
+    const decoded = jwt.verify(token, secret);
+    id = decoded.id;
+  } catch (error) {
+    return next(new errorHandler("Invalid or expired token", 401));
+  }
   const orderObj = await order.find({ userId: id }).populate({
     path: "products.productId",
     select: "name price brand image slug color",
@@ -150,6 +163,16 @@ export const getOrder = asyncErrorHandler(async (req, res, next) => {
       qty: item.quantity,
       size: item.size,
       isReviewed: item.isReviewed,
+      productItemId: item._id,
+      returnRequest: {
+        status: item.returnRequest?.status || "none",
+        reason: item.returnRequest?.reason || "",
+        returnQuantity: item.returnRequest?.returnQuantity || 0,
+        requestedAt: item.returnRequest?.requestedAt || null,
+        approvedAt: item.returnRequest?.approvedAt || null,
+        returnedAt: item.returnRequest?.returnedAt || null,
+        refundId: item.returnRequest?.refundId || "",
+      },
     })),
   }));
 

@@ -209,37 +209,73 @@ export const deleteCoupon = asyncErrorHandler(async (req, res) => {
 // Get All Products
 export const getAllProducts = asyncErrorHandler(async (req, res) => {
   const { page, limit, searchTerm } = req.query;
+  const normalizedSearch = searchTerm ?? "";
 
   const products = await product
-    .find({ name: { $regex: searchTerm, $options: "i" } })
+    .find({ name: { $regex: normalizedSearch, $options: "i" } })
     .skip((page - 1) * limit)
     .limit(limit)
     .sort("brand name");
 
   const count = await product.countDocuments({
-    name: { $regex: searchTerm, $options: "i" },
+    name: { $regex: normalizedSearch, $options: "i" },
   });
 
-  const formattedList = products.map((prod) => ({
-    _id: prod._id,
-    image: prod.image,
-    name: prod.name,
-    desc: `${(prod.ratingScore / prod.ratings.length || 0).toFixed(1)} stars, ${
-      prod.color
-    }`,
-    size: prod.sizeQuantity
-      .map((size) => `${size.size} (${size.quantity} unit)`)
-      .join(", "),
-    brand: prod.brand,
-    status: prod.isActive ? "Active" : "Inactive",
-    price: prod.price,
-    slug: prod.slug,
-  }));
+  const formattedList = products.map((prod) => {
+    const ratingCount = prod.ratings?.length || 0;
+    const average =
+      ratingCount > 0 ? (prod.ratingScore / ratingCount).toFixed(1) : "0.0";
+    const colorLabel = Array.isArray(prod.color)
+      ? prod.color.join(", ")
+      : prod.color || "No color";
+
+    return {
+      _id: prod._id,
+      image: prod.image,
+      name: prod.name,
+      desc: `${average} stars, ${colorLabel}`,
+      size: prod.sizeQuantity
+        .map((size) => `${size.size} (${size.quantity} unit)`)
+        .join(", "),
+      brand: prod.brand,
+      status: prod.isActive ? "Active" : "Inactive",
+      price: prod.price,
+      slug: prod.slug,
+      isNew: prod.isNew || false,
+      variantGroupId: prod.variantGroupId,
+      parentProduct: prod.parentProduct,
+    };
+  });
 
   res.status(200).json({
     success: true,
     count,
     products: formattedList,
+  });
+});
+
+// Toggle "New" status for a product (controls New badge in frontend)
+export const toggleNewStatus = asyncErrorHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const currentProduct = await product.findById(id);
+
+  if (!currentProduct) {
+    return res.status(404).json({
+      success: false,
+      message: "Product not found.",
+    });
+  }
+
+  currentProduct.isNew = !currentProduct.isNew;
+  await currentProduct.save();
+
+  res.status(200).json({
+    success: true,
+    message: currentProduct.isNew
+      ? "Product marked as New successfully."
+      : "Product removed from New tag successfully.",
+    isNew: currentProduct.isNew,
   });
 });
 

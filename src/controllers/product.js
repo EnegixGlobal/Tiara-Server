@@ -1,4 +1,5 @@
 import "dotenv/config";
+import mongoose from "mongoose";
 import product from "../models/product.js";
 import asyncErrorHandler from "express-async-handler";
 import errorHandler from "../utils/errorHandler.js";
@@ -165,9 +166,21 @@ export const getProduct = asyncErrorHandler(async (req, res, next) => {
     return next(new errorHandler("No such product exist", 404));
   }
 
+  const variantGroupId = productExists.variantGroupId || productExists._id;
+  if (!productExists.variantGroupId) {
+    productExists.variantGroupId = variantGroupId;
+    await productExists.save();
+  }
+
+  const variants = await product
+    .find({ variantGroupId, isActive: true })
+    .select("_id name slug image images color price mrp isActive")
+    .sort({ createdAt: 1 });
+
   return res.status(200).json({
     success: true,
     data: productExists,
+    variants,
   });
 });
 
@@ -186,7 +199,9 @@ export const createProduct = asyncErrorHandler(async (req, res, next) => {
     color,
     material,
     featured,
+    isNew,
     category: cat,
+    parentProductId,
   } = req.body;
 
   // Convert color to array if it's a string (comma-separated)
@@ -234,6 +249,22 @@ export const createProduct = asyncErrorHandler(async (req, res, next) => {
     return next(new errorHandler("Product already exists", 400));
   }
 
+  let variantGroupId = new mongoose.Types.ObjectId();
+  let parentProductRef = null;
+
+  if (parentProductId) {
+    const parentProduct = await product.findById(parentProductId);
+    if (!parentProduct) {
+      return next(new errorHandler("Selected linked product was not found", 404));
+    }
+    if (!parentProduct.variantGroupId) {
+      parentProduct.variantGroupId = parentProduct._id;
+      await parentProduct.save();
+    }
+    variantGroupId = parentProduct.variantGroupId;
+    parentProductRef = parentProduct._id;
+  }
+
   await product.create({
     sku,
     name,
@@ -248,6 +279,9 @@ export const createProduct = asyncErrorHandler(async (req, res, next) => {
     material,
     category: cat,
     isFeatured: featured,
+    isNew: Boolean(isNew),
+    variantGroupId,
+    parentProduct: parentProductRef,
   });
 
   const productBrand = await brands.findOne({ name: brand });
@@ -277,7 +311,9 @@ export const updateProduct = asyncErrorHandler(async (req, res, next) => {
     color,
     material,
     featured,
+    isNew,
     category: cat,
+    parentProductId,
   } = req.body;
 
   // Convert color to array if it's a string (comma-separated)
@@ -325,6 +361,30 @@ export const updateProduct = asyncErrorHandler(async (req, res, next) => {
     return next(new errorHandler("Product does not exist", 404));
   }
 
+  let variantGroupIdToUse = productExists.variantGroupId || productExists._id;
+  let parentProductRef = productExists.parentProduct || null;
+
+  if (parentProductId) {
+    if (String(parentProductId) === String(productExists._id)) {
+      return next(new errorHandler("Product cannot be linked to itself", 400));
+    }
+    const parentProduct = await product.findById(parentProductId);
+    if (!parentProduct) {
+      return next(new errorHandler("Selected linked product was not found", 404));
+    }
+    if (!parentProduct.variantGroupId) {
+      parentProduct.variantGroupId = parentProduct._id;
+      await parentProduct.save();
+    }
+    parentProductRef = parentProduct._id;
+    variantGroupIdToUse = parentProduct.variantGroupId;
+  } else if (parentProductId === "" || parentProductId === null) {
+    parentProductRef = null;
+    if (!variantGroupIdToUse) {
+      variantGroupIdToUse = productExists._id;
+    }
+  }
+
   Object.assign(productExists, {
     sku,
     name,
@@ -339,6 +399,9 @@ export const updateProduct = asyncErrorHandler(async (req, res, next) => {
     material,
     isFeatured: featured,
     category: cat,
+    isNew: typeof isNew === "boolean" ? isNew : productExists.isNew,
+    parentProduct: parentProductRef,
+    variantGroupId: variantGroupIdToUse,
   });
 
   await productExists.save();

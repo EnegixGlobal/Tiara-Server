@@ -177,11 +177,21 @@ const productSchema = new mongoose.Schema(
       default: [],
       required: [true, "Please provide at least one color"],
       validate: {
-        validator: function(v) {
+        validator: function (v) {
           return Array.isArray(v) && v.length > 0;
         },
-        message: "At least one color is required"
-      }
+        message: "At least one color is required",
+      },
+    },
+    variantGroupId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: () => new mongoose.Types.ObjectId(),
+      index: true,
+    },
+    parentProduct: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      default: null,
     },
     material: {
       type: String,
@@ -204,6 +214,11 @@ const productSchema = new mongoose.Schema(
       },
     ],
     ratingScore: { type: Number, default: 0 },
+    // Whether to show "New" badge on UI (controlled from Admin panel)
+    isNew: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );
@@ -212,13 +227,19 @@ const productSchema = new mongoose.Schema(
 productSchema.pre("save", function (next) {
   if (this.isModified("name") || this.isModified("color")) {
     // Use first color for slug generation, or join all colors if multiple
-    const colorStr = Array.isArray(this.color) && this.color.length > 0
-      ? this.color[0]
-      : (typeof this.color === 'string' ? this.color : '');
+    const colorStr =
+      Array.isArray(this.color) && this.color.length > 0
+        ? this.color[0]
+        : typeof this.color === "string"
+        ? this.color
+        : "";
     this.slug = slugify(`${this.name}-${colorStr}`, {
       lower: true,
       strict: true,
     });
+  }
+  if (!this.variantGroupId) {
+    this.variantGroupId = new mongoose.Types.ObjectId();
   }
   next();
 });
