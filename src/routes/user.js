@@ -13,6 +13,7 @@ import {
   deleteAddress,
   updateProfile,
 } from "../controllers/user.js";
+import { validateCoupon, getActiveCoupons } from "../controllers/coupon.js";
 import { verifyToken } from "../middleware/auth.js";
 
 const router = express.Router();
@@ -24,6 +25,10 @@ router.route("/verify").get(verifyUser);
 router.route("/orders").get(getOrder);
 router.route("/forgetpassword/:email").get(forgetPassword);
 router.route("/resetpassword").post(changeResetPassword);
+
+// Coupon routes (public)
+router.route("/coupons").get(getActiveCoupons);
+router.route("/coupon/validate").post(validateCoupon);
 
 // Profile route (protected)
 router.route("/profile").put(verifyToken, updateProfile);

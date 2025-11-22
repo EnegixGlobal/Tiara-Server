@@ -5,6 +5,7 @@ import order from "../models/order.js";
 import product from "../models/product.js";
 import Razorpay from "razorpay";
 import brands from "../models/brands.js";
+import Coupon from "../models/coupon.js";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -137,38 +138,36 @@ export const updateOrderStatus = asyncErrorHandler(async (req, res) => {
 });
 
 // Get Coupons
-// Note: Razorpay doesn't have built-in coupon system like Stripe
-// This is a simple implementation - you may want to create a Coupon model in the database
 export const getCoupons = asyncErrorHandler(async (req, res) => {
-  // Simple in-memory coupon system
-  // In production, you should store coupons in a database
-  const coupons = [
-    {
-      id: "SUMILSUTHAR197",
-      percent_off: null,
-      discount: 200,
-      duration: "forever",
-      max_redemptions: 999,
-      redemption_left: "0/∞",
-    },
-    {
-      id: "NIKE2024",
-      percent_off: null,
-      discount: 200,
-      duration: "forever",
-      max_redemptions: 999,
-      redemption_left: "0/∞",
-    },
-  ];
+  const coupons = await Coupon.find().sort("-createdAt");
+
+  const formattedCoupons = coupons.map((c) => ({
+    id: c.code,
+    percent_off: c.discountType === "percentage" ? c.percentOff : null,
+    discount: c.discountType === "fixed" ? c.discount : null,
+    discountType: c.discountType,
+    duration: c.duration,
+    duration_in_months: c.durationInMonths || null,
+    max_redemptions: c.maxRedemptions,
+    times_redeemed: c.timesRedeemed,
+    redemption_left:
+      c.maxRedemptions === 999
+        ? `${c.timesRedeemed}/∞`
+        : `${c.timesRedeemed}/${c.maxRedemptions}`,
+    validFrom: c.validFrom,
+    validUntil: c.validUntil,
+    isActive: c.isActive,
+    minPurchaseAmount: c.minPurchaseAmount,
+    maxDiscount: c.maxDiscount || null,
+  }));
 
   res.status(200).json({
     success: true,
-    data: coupons,
+    data: formattedCoupons,
   });
 });
 
 // Create Coupon
-// Note: This is a placeholder - implement database storage for production
 export const createCoupon = asyncErrorHandler(async (req, res) => {
   const {
     name,
@@ -176,29 +175,74 @@ export const createCoupon = asyncErrorHandler(async (req, res) => {
     duration,
     duration_in_months,
     max_redemptions,
+    max_discount,
   } = req.body.formData;
 
-  // In production, save to database
-  // For now, just return success
-  console.log("Coupon created:", {
-    id: name.toUpperCase(),
-    discount,
-    duration,
-    duration_in_months,
-    max_redemptions,
+  if (!name || !discount || !duration || max_redemptions === undefined) {
+    return errorHandler(res, 400, "Please provide all required fields.");
+  }
+
+  // Check if coupon code already exists
+  const existingCoupon = await Coupon.findOne({
+    code: name.toUpperCase().trim(),
   });
 
-  res.status(200).json({
+  if (existingCoupon) {
+    return errorHandler(res, 400, "Coupon code already exists.");
+  }
+
+  // Determine discount type based on discount value
+  // If discount is between 0-100, treat as percentage, otherwise fixed
+  const discountType = discount <= 100 ? "percentage" : "fixed";
+  const discountValue = parseFloat(discount);
+  const percentOff = discountType === "percentage" ? discountValue : null;
+
+  // Validate duration_in_months for repeating coupons
+  if (duration === "repeating" && !duration_in_months) {
+    return errorHandler(
+      res,
+      400,
+      "Duration in months is required for repeating coupons."
+    );
+  }
+
+  const couponData = {
+    code: name.toUpperCase().trim(),
+    discountType,
+    discount: discountValue,
+    percentOff,
+    duration,
+    maxRedemptions: parseInt(max_redemptions) || 999,
+    isActive: true,
+  };
+
+  if (duration === "repeating" && duration_in_months) {
+    couponData.durationInMonths = parseInt(duration_in_months);
+  }
+
+  // Add max discount if provided (only relevant for percentage discounts)
+  if (max_discount && max_discount !== "" && discountType === "percentage") {
+    couponData.maxDiscount = parseFloat(max_discount);
+  }
+
+  const newCoupon = await Coupon.create(couponData);
+
+  res.status(201).json({
     success: true,
     message: "Coupon created successfully.",
+    data: newCoupon,
   });
 });
 
 // Delete Coupon
-// Note: This is a placeholder - implement database storage for production
 export const deleteCoupon = asyncErrorHandler(async (req, res) => {
-  // In production, delete from database
-  console.log("Coupon deleted:", req.params.id);
+  const couponCode = req.params.id.toUpperCase().trim();
+
+  const deletedCoupon = await Coupon.findOneAndDelete({ code: couponCode });
+
+  if (!deletedCoupon) {
+    return errorHandler(res, 404, "Coupon not found.");
+  }
 
   res.status(200).json({
     success: true,

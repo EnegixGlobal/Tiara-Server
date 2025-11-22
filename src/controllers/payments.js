@@ -5,6 +5,7 @@ import crypto from "crypto";
 import order from "../models/order.js";
 import user from "../models/user.js";
 import product from "../models/product.js";
+import Coupon from "../models/coupon.js";
 import sendEmail from "../utils/sendEmail.js";
 
 const razorpay = new Razorpay({
@@ -47,12 +48,19 @@ export const checkout = asyncErrorHandler(async (req, res) => {
     0
   );
 
-  // Apply coupon discount (simple implementation - you can enhance this)
+  // Apply coupon discount from database
   let discount = 0;
+  let appliedCoupon = null;
   if (coupon && coupon !== "") {
-    const validCoupons = ["SUMILSUTHAR197", "NIKE2024"];
-    if (validCoupons.includes(coupon.toUpperCase())) {
-      discount = 200; // Fixed discount amount
+    const couponCode = coupon.toUpperCase().trim();
+    const couponDoc = await Coupon.findOne({ code: couponCode });
+
+    if (couponDoc && couponDoc.isValid()) {
+      const calculatedDiscount = couponDoc.calculateDiscount(subtotal);
+      if (calculatedDiscount > 0) {
+        discount = calculatedDiscount;
+        appliedCoupon = couponDoc;
+      }
     }
   }
 
@@ -68,7 +76,7 @@ export const checkout = asyncErrorHandler(async (req, res) => {
     amount: total,
     currency: "INR",
     receipt: receipt,
-    notes: {
+      notes: {
       userId: id,
       email: email,
       cart: JSON.stringify(
@@ -80,6 +88,7 @@ export const checkout = asyncErrorHandler(async (req, res) => {
       ),
       subtotal: subtotal,
       discount: discount,
+      coupon: appliedCoupon ? appliedCoupon.code : null,
       addressId: addressId || null,
     },
   };
@@ -164,6 +173,14 @@ export const verifyPayment = asyncErrorHandler(async (req, res) => {
       },
       payment_status: "paid",
     });
+
+    // Increment coupon redemption count if coupon was used
+    if (notes.coupon) {
+      const couponDoc = await Coupon.findOne({ code: notes.coupon });
+      if (couponDoc) {
+        await couponDoc.incrementRedemption();
+      }
+    }
 
     // Clear user cart
     const userObj = await user.findById(notes.userId);
@@ -438,11 +455,19 @@ export const cashOnDelivery = asyncErrorHandler(async (req, res) => {
     0
   );
 
+  // Apply coupon discount from database
   let discount = 0;
+  let appliedCoupon = null;
   if (coupon && coupon !== "") {
-    const validCoupons = ["SUMILSUTHAR197", "NIKE2024"];
-    if (validCoupons.includes(coupon.toUpperCase())) {
-      discount = 200;
+    const couponCode = coupon.toUpperCase().trim();
+    const couponDoc = await Coupon.findOne({ code: couponCode });
+
+    if (couponDoc && couponDoc.isValid()) {
+      const calculatedDiscount = couponDoc.calculateDiscount(subtotal);
+      if (calculatedDiscount > 0) {
+        discount = calculatedDiscount;
+        appliedCoupon = couponDoc;
+      }
     }
   }
 
