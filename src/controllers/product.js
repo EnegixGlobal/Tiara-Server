@@ -33,7 +33,7 @@ export const getProducts = asyncErrorHandler(async (req, res) => {
   const page = parseInt(req.query.page) - 1 || 0;
   const limit = parseInt(req.query.limit) || 12;
   const search = req.query.search || "";
-  const sortParam = req.query.sortBy?.value || "createdAt_asc";
+  const sortParam = req.query.sortBy?.value || "createdAt_desc";
   const colorValues = toArray(req.query.color).map((item) => item?.trim()).filter(Boolean);
   const sizeValues = toArray(req.query.size)
     .map((size) => Number(size))
@@ -63,18 +63,33 @@ export const getProducts = asyncErrorHandler(async (req, res) => {
   const parsedMaxPrice = Number(priceRange.maxPrice);
 
   const query = {
-    name: { $regex: search, $options: "i" },
     isActive: true,
   };
 
-  if (!Number.isNaN(parsedMinPrice) || !Number.isNaN(parsedMaxPrice)) {
-    query.price = {};
-    if (!Number.isNaN(parsedMinPrice) && hasMinPrice) {
-      query.price.$gte = parsedMinPrice;
+  // Only add name filter if search term is provided
+  if (search && search.trim() !== "") {
+    query.name = { $regex: search.trim(), $options: "i" };
+  }
+
+  // Only apply price filter if both min and max are valid and provided
+  // Skip price filter if it's the default full range (0 to 1999) to include all products
+  if (hasMinPrice && hasMaxPrice && !Number.isNaN(parsedMinPrice) && !Number.isNaN(parsedMaxPrice)) {
+    // Skip filter if it's the default full range (0 to 1999) - this means "show all products"
+    const isDefaultRange = parsedMinPrice === 0 && parsedMaxPrice === 1999;
+    
+    if (!isDefaultRange) {
+      // Only apply price filter when user has actually changed from default range
+      query.price = {
+        $gte: parsedMinPrice,
+        $lte: parsedMaxPrice
+      };
     }
-    if (!Number.isNaN(parsedMaxPrice) && hasMaxPrice) {
-      query.price.$lte = parsedMaxPrice;
-    }
+  } else if (hasMinPrice && !Number.isNaN(parsedMinPrice) && parsedMinPrice > 0) {
+    // Only min price provided (and it's not 0, meaning user set a minimum)
+    query.price = { $gte: parsedMinPrice };
+  } else if (hasMaxPrice && !Number.isNaN(parsedMaxPrice) && parsedMaxPrice < 1999) {
+    // Only max price provided (and it's less than max, meaning user set a maximum)
+    query.price = { $lte: parsedMaxPrice };
   }
 
   if (brandValues.length > 0) {
@@ -111,12 +126,12 @@ export const getProducts = asyncErrorHandler(async (req, res) => {
   }
 
   let sortField = "createdAt";
-  let sortOrder = 1;
+  let sortOrder = -1; // Default to descending (newest first)
 
   if (sortParam) {
     const [field, order] = sortParam.split("_");
     sortField = field || "createdAt";
-    sortOrder = order?.toLowerCase() === "desc" ? -1 : 1;
+    sortOrder = order?.toLowerCase() === "desc" ? -1 : order?.toLowerCase() === "asc" ? 1 : -1;
   }
 
   const products = await product
