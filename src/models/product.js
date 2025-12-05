@@ -133,10 +133,15 @@ const productSchema = new mongoose.Schema(
       required: [true, "Please provide a brand"],
     },
     category: {
-      type: String,
+      type: [String],
       lowercase: true,
-      trim: true,
       required: [true, "Please provide a category"],
+      validate: {
+        validator: function (v) {
+          return Array.isArray(v) && v.length > 0;
+        },
+        message: "At least one category is required",
+      },
     },
     image: {
       type: String,

@@ -33,7 +33,8 @@ export const getProducts = asyncErrorHandler(async (req, res) => {
   const page = parseInt(req.query.page) - 1 || 0;
   const limit = parseInt(req.query.limit) || 12;
   const search = req.query.search || "";
-  const sortParam = req.query.sortBy?.value || "createdAt_desc";
+  // Default to updatedAt_desc so newly added AND updated products appear first
+  const sortParam = req.query.sortBy?.value || "updatedAt_desc";
   const colorValues = toArray(req.query.color).map((item) => item?.trim()).filter(Boolean);
   const sizeValues = toArray(req.query.size)
     .map((size) => Number(size))
@@ -106,31 +107,21 @@ export const getProducts = asyncErrorHandler(async (req, res) => {
   }
 
   if (categoryValues.length > 0) {
-    // Categories are stored as comma-separated strings like "flat,daily comfort,casual wear"
-    // Category field is lowercase (schema has lowercase: true)
-    // We need to match if any selected category appears in the comma-separated string
+    // Categories are now stored as arrays, so we can use simple $in operator
+    // Normalize to lowercase for matching
+    const normalizedCats = categoryValues.map((cat) => cat.trim().toLowerCase());
     
-    // Normalize to lowercase and escape special regex characters
-    const normalizedCats = categoryValues.map((cat) => 
-      cat.trim().toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    );
-    
-    // Use $or to match if category string contains any of the selected categories
-    // Pattern: (^|,)category(,|$) matches category at start, middle, or end
-    query.$or = query.$or || [];
-    normalizedCats.forEach((cat) => {
-      query.$or.push({
-        category: { $regex: `(^|,)\\s*${cat}\\s*(,|$)`, $options: "i" }
-      });
-    });
+    // Use $in to match if any of the selected categories are in the product's category array
+    // This is much faster than regex and can use indexes
+    query.category = { $in: normalizedCats };
   }
 
-  let sortField = "createdAt";
-  let sortOrder = -1; // Default to descending (newest first)
+  let sortField = "updatedAt"; // Default to updatedAt so updated products appear first
+  let sortOrder = -1; // Default to descending (newest/updated first)
 
   if (sortParam) {
     const [field, order] = sortParam.split("_");
-    sortField = field || "createdAt";
+    sortField = field || "updatedAt"; // Fallback to updatedAt if field parsing fails
     sortOrder = order?.toLowerCase() === "desc" ? -1 : order?.toLowerCase() === "asc" ? 1 : -1;
   }
 
@@ -227,6 +218,14 @@ export const createProduct = asyncErrorHandler(async (req, res, next) => {
     colorArray = [];
   }
 
+  // Convert category to array if it's a string (comma-separated) - for backward compatibility
+  let categoryArray = cat;
+  if (typeof cat === 'string') {
+    categoryArray = cat.split(',').map(c => c.trim().toLowerCase()).filter(c => c.length > 0);
+  } else if (!Array.isArray(cat)) {
+    categoryArray = [];
+  }
+
   if (
     !sku ||
     !name ||
@@ -238,7 +237,8 @@ export const createProduct = asyncErrorHandler(async (req, res, next) => {
     !colorArray ||
     colorArray.length === 0 ||
     !material ||
-    !cat ||
+    !categoryArray ||
+    categoryArray.length === 0 ||
     sizeQuantity.length === 0
   ) {
     return next(new errorHandler("Please fill all fields", 400));
@@ -292,7 +292,7 @@ export const createProduct = asyncErrorHandler(async (req, res, next) => {
     sizeQuantity,
     color: colorArray,
     material,
-    category: cat,
+    category: categoryArray,
     isFeatured: featured,
     isNew: Boolean(isNew),
     variantGroupId,
@@ -339,6 +339,16 @@ export const updateProduct = asyncErrorHandler(async (req, res, next) => {
     colorArray = [];
   }
 
+  // Category must be an array (new format only - no backward compatibility for updates)
+  if (!Array.isArray(cat)) {
+    return next(new errorHandler("Category must be an array. Please use the new format.", 400));
+  }
+
+  // Normalize category array: trim, lowercase, and filter empty values
+  const categoryArray = cat
+    .map(c => (typeof c === 'string' ? c.trim().toLowerCase() : String(c).toLowerCase().trim()))
+    .filter(c => c.length > 0);
+
   if (
     !sku ||
     !name ||
@@ -350,7 +360,8 @@ export const updateProduct = asyncErrorHandler(async (req, res, next) => {
     !colorArray ||
     colorArray.length === 0 ||
     !material ||
-    !cat ||
+    !categoryArray ||
+    categoryArray.length === 0 ||
     sizeQuantity.length === 0
   ) {
     return next(new errorHandler("Please fill all fields", 400));
@@ -413,7 +424,7 @@ export const updateProduct = asyncErrorHandler(async (req, res, next) => {
     color: colorArray,
     material,
     isFeatured: featured,
-    category: cat,
+    category: categoryArray,
     isNew: typeof isNew === "boolean" ? isNew : productExists.isNew,
     parentProduct: parentProductRef,
     variantGroupId: variantGroupIdToUse,
