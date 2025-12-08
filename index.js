@@ -17,6 +17,7 @@ import brandRoute from "./src/routes/brands.js";
 import categoryRoute from "./src/routes/category.js";
 import colorRoute from "./src/routes/colors.js";
 import returnRoute from "./src/routes/return.js";
+import shiprocketRoute from "./src/routes/shiprocket.js";
 
 import { verifyToken, adminOnly } from "./src/middleware/auth.js";
 import { webhook } from "./src/controllers/payments.js";
@@ -84,6 +85,7 @@ app.use("/api/v1/brands", adminOnly, brandRoute);
 app.use("/api/v1/category", adminOnly, categoryRoute);
 app.use("/api/v1/colors", adminOnly, colorRoute);
 app.use("/api/v1/return", returnRoute);
+app.use("/api/v1/shiprocket", adminOnly, shiprocketRoute);
 
 // Catch-all route
 app.use((req, res) => {

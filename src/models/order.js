@@ -39,6 +39,19 @@ const orderSchema = new mongoose.Schema(
     shipping: { type: Object, required: true },
     delivery_status: { type: String, default: "pending" },
     payment_status: { type: String, required: true },
+    shiprocket: {
+      shipmentId: { type: Number, default: null },
+      orderId: { type: String, default: null },
+      awbCode: { type: String, default: null },
+      courierName: { type: String, default: null },
+      courierId: { type: Number, default: null },
+      status: { type: String, default: null },
+      trackingUrl: { type: String, default: null },
+      labelUrl: { type: String, default: null },
+      manifestUrl: { type: String, default: null },
+      createdAt: { type: Date },
+      updatedAt: { type: Date },
+    },
   },
   { timestamps: true }
 );

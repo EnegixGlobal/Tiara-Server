@@ -7,6 +7,7 @@ import user from "../models/user.js";
 import product from "../models/product.js";
 import Coupon from "../models/coupon.js";
 import sendEmail from "../utils/sendEmail.js";
+import * as shiprocketService from "../utils/shiprocket.js";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -269,6 +270,65 @@ export const verifyPayment = asyncErrorHandler(async (req, res) => {
     // Calculate discount
     const discount = notes.discount || 0;
     const finalTotal = razorpayOrder.amount / 100;
+
+    // Create Ship Rocket shipment if shipping address is available
+    if (shippingAddress && process.env.SHIPROCKET_EMAIL && process.env.SHIPROCKET_PASSWORD) {
+      try {
+        const productDetails = orderDetails.products.map((item) => ({
+          productId: item.productId._id,
+          name: `${item.productId.brand} ${item.productId.name} - Size ${item.size}`,
+          sku: item.productId.sku || `SKU-${item.productId._id}`,
+          quantity: item.quantity,
+          price: item.productId.price,
+          size: item.size,
+        }));
+
+        const shiprocketResponse = await shiprocketService.createShipment(
+          newOrder,
+          shippingAddress,
+          productDetails
+        );
+
+        // Update order with Ship Rocket details
+        if (shiprocketResponse) {
+          console.log("Ship Rocket response:", JSON.stringify(shiprocketResponse, null, 2));
+          
+          // Ship Rocket API returns different response structures
+          const orderId = shiprocketResponse.order_id || shiprocketResponse.data?.order_id;
+          const shipmentId = shiprocketResponse.shipment_id || shiprocketResponse.data?.shipment_id;
+          const status = shiprocketResponse.status || shiprocketResponse.data?.status;
+          
+          if (orderId || shipmentId) {
+            newOrder.shiprocket = {
+              shipmentId: shipmentId || null,
+              orderId: orderId || null,
+              status: status || null,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            };
+            await newOrder.save();
+            console.log(`Ship Rocket shipment created for order ${newOrder._id}`);
+          } else {
+            console.warn("Ship Rocket response received but no order_id or shipment_id found:", shiprocketResponse);
+          }
+        }
+      } catch (shiprocketError) {
+        console.error("Ship Rocket shipment creation failed:", {
+          message: shiprocketError.message,
+          stack: shiprocketError.stack,
+          response: shiprocketError.response?.data
+        });
+        // Don't fail the order creation if Ship Rocket fails
+        // Admin can create shipment manually later
+      }
+    } else {
+      if (!shippingAddress) {
+        console.warn("Ship Rocket: Shipping address not found for order", newOrder._id);
+      }
+      if (!process.env.SHIPROCKET_EMAIL || !process.env.SHIPROCKET_PASSWORD) {
+        console.warn("Ship Rocket: Credentials not configured");
+      }
+    }
 
     // Send order confirmation email
     try {
@@ -535,6 +595,73 @@ export const cashOnDelivery = asyncErrorHandler(async (req, res) => {
   userObj.cart.items = [];
   userObj.cart.totalPrice = 0;
   await userObj.save();
+
+  // Create Ship Rocket shipment if credentials are configured
+  if (process.env.SHIPROCKET_EMAIL && process.env.SHIPROCKET_PASSWORD && shippingAddress) {
+    try {
+      // Fetch order with populated products for Ship Rocket
+      const orderWithProducts = await order
+        .findById(newOrder._id)
+        .populate({
+          path: "products.productId",
+          select: "name price brand image color sku",
+        });
+
+      const productDetails = orderWithProducts.products.map((item) => ({
+        productId: item.productId._id,
+        name: `${item.productId.brand} ${item.productId.name} - Size ${item.size}`,
+        sku: item.productId.sku || `SKU-${item.productId._id}`,
+        quantity: item.quantity,
+        price: item.productId.price,
+        size: item.size,
+      }));
+
+      const shiprocketResponse = await shiprocketService.createShipment(
+        newOrder,
+        shippingAddress,
+        productDetails
+      );
+
+      // Update order with Ship Rocket details
+      if (shiprocketResponse) {
+        console.log("Ship Rocket response:", JSON.stringify(shiprocketResponse, null, 2));
+        
+        // Ship Rocket API returns different response structures
+        const orderId = shiprocketResponse.order_id || shiprocketResponse.data?.order_id;
+        const shipmentId = shiprocketResponse.shipment_id || shiprocketResponse.data?.shipment_id;
+        const status = shiprocketResponse.status || shiprocketResponse.data?.status;
+        
+        if (orderId || shipmentId) {
+          newOrder.shiprocket = {
+            shipmentId: shipmentId || null,
+            orderId: orderId || null,
+            status: status || null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+          await newOrder.save();
+          console.log(`Ship Rocket shipment created for COD order ${newOrder._id}`);
+        } else {
+          console.warn("Ship Rocket response received but no order_id or shipment_id found:", shiprocketResponse);
+        }
+      }
+    } catch (shiprocketError) {
+      console.error("Ship Rocket shipment creation failed:", {
+        message: shiprocketError.message,
+        stack: shiprocketError.stack,
+        response: shiprocketError.response?.data
+      });
+      // Don't fail the order creation if Ship Rocket fails
+      // Admin can create shipment manually later
+    }
+  } else {
+    if (!shippingAddress) {
+      console.warn("Ship Rocket: Shipping address not found for COD order", newOrder._id);
+    }
+    if (!process.env.SHIPROCKET_EMAIL || !process.env.SHIPROCKET_PASSWORD) {
+      console.warn("Ship Rocket: Credentials not configured");
+    }
+  }
 
   try {
     await sendEmail({
