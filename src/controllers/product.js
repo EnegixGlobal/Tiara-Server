@@ -8,6 +8,7 @@ import user from "../models/user.js";
 import brands from "../models/brands.js";
 import category from "../models/category.js";
 import color from "../models/colors.js";
+import { deleteImageFile, getImagesToDelete } from "../utils/fileUtils.js";
 
 // Get all products
 export const getAllProducts = asyncErrorHandler(async (req, res) => {
@@ -387,6 +388,10 @@ export const updateProduct = asyncErrorHandler(async (req, res, next) => {
     return next(new errorHandler("Product does not exist", 404));
   }
 
+  // Store old images for comparison
+  const oldMainImage = productExists.image;
+  const oldImages = Array.isArray(productExists.images) ? [...productExists.images] : [];
+
   let variantGroupIdToUse = productExists.variantGroupId || productExists._id;
   let parentProductRef = productExists.parentProduct || null;
 
@@ -431,6 +436,36 @@ export const updateProduct = asyncErrorHandler(async (req, res, next) => {
   });
 
   await productExists.save();
+
+  // Delete old image files that are no longer in use
+  // Only delete local uploads (contain /uploads/ in URL)
+  const imagesToDelete = [];
+
+  // Check if main image changed and old one is a local upload
+  if (oldMainImage && oldMainImage !== image) {
+    if (typeof oldMainImage === "string" && oldMainImage.includes("/uploads/")) {
+      imagesToDelete.push(oldMainImage);
+    }
+  }
+
+  // Check images array for removed images
+  const newImages = images && Array.isArray(images) ? images : [];
+  const removedImages = getImagesToDelete(oldImages, newImages);
+  
+  // Only delete local uploads
+  removedImages.forEach((imgUrl) => {
+    if (typeof imgUrl === "string" && imgUrl.includes("/uploads/")) {
+      imagesToDelete.push(imgUrl);
+    }
+  });
+
+  // Delete the old image files
+  if (imagesToDelete.length > 0) {
+    imagesToDelete.forEach((imgUrl) => {
+      deleteImageFile(imgUrl);
+    });
+    console.log(`Deleted ${imagesToDelete.length} old image file(s) for product ${productExists._id}`);
+  }
 
   res.status(200).json({
     success: true,

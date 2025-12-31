@@ -6,6 +6,7 @@ import product from "../models/product.js";
 import Razorpay from "razorpay";
 import brands from "../models/brands.js";
 import Coupon from "../models/coupon.js";
+import { deleteImageFile, deleteImageFiles } from "../utils/fileUtils.js";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -349,6 +350,33 @@ export const deleteProduct = asyncErrorHandler(async (req, res) => {
       success: false,
       message: "Product not found.",
     });
+  }
+
+  // Delete associated image files before deleting the product
+  const imagesToDelete = [];
+  
+  // Add main image if it exists and is a local upload
+  if (currentProduct.image) {
+    const imageUrl = currentProduct.image;
+    // Only delete if it's a local upload (contains /uploads/)
+    if (typeof imageUrl === "string" && imageUrl.includes("/uploads/")) {
+      imagesToDelete.push(imageUrl);
+    }
+  }
+  
+  // Add all images from images array if they exist and are local uploads
+  if (Array.isArray(currentProduct.images) && currentProduct.images.length > 0) {
+    currentProduct.images.forEach((imgUrl) => {
+      if (typeof imgUrl === "string" && imgUrl.includes("/uploads/")) {
+        imagesToDelete.push(imgUrl);
+      }
+    });
+  }
+
+  // Delete all image files
+  if (imagesToDelete.length > 0) {
+    const result = deleteImageFiles(imagesToDelete);
+    console.log(`Deleted ${result.deleted} image file(s) for product ${currentProduct._id}`);
   }
 
   const productBrand = await brands.findOne({ name: currentProduct.brand });

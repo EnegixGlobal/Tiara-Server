@@ -18,6 +18,7 @@ import categoryRoute from "./src/routes/category.js";
 import colorRoute from "./src/routes/colors.js";
 import returnRoute from "./src/routes/return.js";
 import shiprocketRoute from "./src/routes/shiprocket.js";
+import uploadRoute from "./src/routes/upload.js";
 
 import { verifyToken, adminOnly } from "./src/middleware/auth.js";
 import { webhook } from "./src/controllers/payments.js";
@@ -51,6 +52,8 @@ app.set('query parser', (str) => {
 
 // Middleware setup
 app.use(express.static("./public"));
+// Serve uploaded images from uploads folder
+app.use("/uploads", express.static("./uploads"));
 
 // Webhook for Razorpay (OPTIONAL - payment flow works without webhooks)
 // Webhook is only needed for backup verification or real-time updates
@@ -86,6 +89,7 @@ app.use("/api/v1/category", adminOnly, categoryRoute);
 app.use("/api/v1/colors", adminOnly, colorRoute);
 app.use("/api/v1/return", returnRoute);
 app.use("/api/v1/shiprocket", adminOnly, shiprocketRoute);
+app.use("/api/v1/upload", uploadRoute);
 
 // Catch-all route
 app.use((req, res) => {
@@ -97,7 +101,8 @@ app.use((req, res) => {
 app.use(errorHandlerMiddleware);
 
 // Start Server
-const port = process.env.PORT || 5000;
+// Handle PORT with potential spaces (e.g., "PORT = 3000" from .env)
+const port = parseInt(process.env.PORT?.trim() || "5000", 10) || 5000;
 
 const StartServer = async () => {
   try {
@@ -105,7 +110,9 @@ const StartServer = async () => {
       console.log(`Server is running on http://localhost:${port}`);
     });
 
-    await connectDatabase(process.env.MONGO_URI);
+    // Handle MONGO_URI with potential spaces (e.g., "MONGO_URI = mongodb://..." from .env)
+    const mongoURI = process.env.MONGO_URI?.trim() || "";
+    await connectDatabase(mongoURI);
   } catch (error) {
     console.log(error);
   }

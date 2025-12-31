@@ -108,7 +108,17 @@ export const verifyUser = asyncErrorHandler(async (req, res, next) => {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) return next(new errorHandler("Token not found", 401));
 
-  const { id } = jwt.verify(token, secret);
+  let id;
+  try {
+    const decoded = jwt.verify(token, secret);
+    id = decoded.id;
+  } catch (error) {
+    if (error.name === "TokenExpiredError") {
+      return next(new errorHandler("Token has expired. Please login again.", 401));
+    }
+    return next(new errorHandler("Invalid or expired token", 401));
+  }
+
   const userObj = await user.findById(id);
   if (!userObj) return next(new errorHandler("Invalid Token", 401));
 

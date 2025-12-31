@@ -13,7 +13,18 @@ export const adminOnly = asyncErrorHandler(async (req, res, next) => {
   }
 
   const token = authHeader.split(" ")[1];
-  const { id, email } = jwt.verify(token, secret);
+  
+  let id, email;
+  try {
+    const decoded = jwt.verify(token, secret);
+    id = decoded.id;
+    email = decoded.email;
+  } catch (error) {
+    if (error.name === "TokenExpiredError") {
+      return next(new errorHandler("Token has expired. Please login again.", 401));
+    }
+    return next(new errorHandler("Invalid or expired token", 401));
+  }
 
   const newUser = await user.findOne({ _id: id, email });
   if (!newUser) return next(new errorHandler("Invalid User", 401));
@@ -37,7 +48,18 @@ export const verifyToken = asyncErrorHandler(async (req, res, next) => {
   }
 
   const token = authHeader.split(" ")[1];
-  const { id, email } = jwt.verify(token, secret);
+  
+  let id, email;
+  try {
+    const decoded = jwt.verify(token, secret);
+    id = decoded.id;
+    email = decoded.email;
+  } catch (error) {
+    if (error.name === "TokenExpiredError") {
+      return next(new errorHandler("Token has expired. Please login again.", 401));
+    }
+    return next(new errorHandler("Invalid or expired token", 401));
+  }
 
   req.tokenId = id;
   req.tokenEmail = email;
